@@ -3,7 +3,10 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import authRoutes from "./routes/auth.routes";
+import adminRoutes from "./routes/admin.routes";
 import userRoutes from "./routes/user.routes";
+import driverRoutes from "./routes/driver.routes";
+import routeTemplateRoutes from "./routes/routeTemplate.routes";
 
 const app = express();
 
@@ -13,7 +16,10 @@ app.use(express.json());
 app.use(morgan("dev"));
 
 app.use("/auth", authRoutes);
+app.use("/admins", adminRoutes);
 app.use("/users", userRoutes);
+app.use("/drivers", driverRoutes);
+app.use("/route-templates", routeTemplateRoutes);
 
 app.get("/", (req: Request, res: Response) => {
   res.send("Skitro API is running...");

@@ -19,6 +19,12 @@ export interface ITrip extends Document {
   status: "scheduled" | "ongoing" | "completed" | "cancelled";
 }
 
+const locationSchema = new Schema({
+  name: String,
+  lat: Number,
+  lng: Number,
+});
+
 const tripSchema = new Schema<ITrip>(
   {
     driverId: { type: Schema.Types.ObjectId, ref: "Driver", required: true },
@@ -28,9 +34,9 @@ const tripSchema = new Schema<ITrip>(
       required: true,
     },
 
-    from: String,
-    to: String,
-    stops: [String],
+    from: locationSchema,
+    to: locationSchema,
+    stops: [locationSchema],
 
     time: String,
     date: String,

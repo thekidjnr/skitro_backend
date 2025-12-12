@@ -120,9 +120,9 @@ export const createTripManually = async (
     const trip = await Trip.create({
       driverId,
       routeTemplateId,
-      from: routeTemplate.from,
-      to: routeTemplate.to,
-      stops: routeTemplate.stops || [],
+      from: routeTemplate.from.name,
+      to: routeTemplate.to.name,
+      stops: routeTemplate.stops.map((s) => s.name),
       date,
       time,
       totalSeats,

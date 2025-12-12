@@ -76,6 +76,7 @@ export const sendOtp = async (
 
     return res.json({
       success: true,
+      otp,
       message: "OTP sent successfully",
     });
   } catch (err) {

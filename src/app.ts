@@ -5,6 +5,7 @@ import morgan from "morgan";
 import authRoutes from "./routes/auth.routes";
 import adminRoutes from "./routes/admin.routes";
 import userRoutes from "./routes/user.routes";
+import cloudinaryRoutes from "./routes/cloudinary.routes";
 import driverRoutes from "./routes/driver.routes";
 import routeTemplateRoutes from "./routes/routeTemplate.routes";
 
@@ -18,6 +19,7 @@ app.use(morgan("dev"));
 app.use("/auth", authRoutes);
 app.use("/admins", adminRoutes);
 app.use("/users", userRoutes);
+app.use("/cloudinary", cloudinaryRoutes);
 app.use("/drivers", driverRoutes);
 app.use("/route-templates", routeTemplateRoutes);
 

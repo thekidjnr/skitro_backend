@@ -7,10 +7,21 @@ import {
   updateDriverLocation,
 } from "../controllers/driver.controller";
 import { protect } from "../middleware/auth.middleware";
+import multer from "multer";
+
+const upload = multer({ dest: "uploads/" });
 
 const router = Router();
 
-router.post("/onboard", protect, onboardDriver);
+router.post(
+  "/onboard",
+  protect,
+  upload.fields([
+    { name: "vehicleImage", maxCount: 1 },
+    { name: "licenseImage", maxCount: 1 },
+  ]),
+  onboardDriver
+);
 router.patch("/:id/status", protect, toggleDriverStatus);
 router.patch("/:id/location", updateDriverLocation);
 

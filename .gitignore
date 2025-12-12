@@ -41,3 +41,8 @@ coverage/
 # Build output
 dist/
 build/
+
+
+# Temporary files for uploads
+tmp/
+uploads/

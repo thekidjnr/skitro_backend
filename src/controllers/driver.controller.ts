@@ -16,7 +16,7 @@ export const onboardDriver = async (
       vehicleCapacity,
       vehicleImage,
       licenseImage,
-      routes, // Array of routes [{ routeTemplateId, selectedStops, times }]
+      routes,
     } = req.body;
 
     // 1. Required fields validation
@@ -42,17 +42,21 @@ export const onboardDriver = async (
     const validatedRoutes = [];
     for (const r of routes) {
       const template = await RouteTemplate.findById(r.routeTemplateId);
-      if (!template) {
+      if (!template)
         return next(
           createError(404, `Route template not found: ${r.routeTemplateId}`)
         );
-      }
+
       validatedRoutes.push({
         routeTemplateId: r.routeTemplateId,
-        from: template.from,
-        to: template.to,
-        selectedStops: r.selectedStops || template.stops,
-        times: r.times.map((t: string) => ({ time: t, enabled: true })),
+        from: template.from, // auto fill
+        to: template.to, // auto fill
+        selectedStops:
+          r.selectedStops?.map((stopName: string) => {
+            const stop = template.stops.find((s) => s.name === stopName);
+            return stop || { name: stopName, lat: 0, lng: 0 }; // fallback
+          }) || template.stops,
+        times: r.times.map((t: string) => ({ time: t, enabled: true })), // convert strings to objects
         active: false,
       });
     }

@@ -5,11 +5,17 @@ interface IRouteTime {
   enabled: boolean;
 }
 
+interface IRouteStop {
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 interface IDriverRoute {
   routeTemplateId: ObjectId;
-  from: string;
-  to: string;
-  selectedStops: string[];
+  from: IRouteStop;
+  to: IRouteStop;
+  selectedStops: IRouteStop[];
   times: IRouteTime[];
   active?: boolean;
   date?: Date;
@@ -54,6 +60,15 @@ interface IDriver {
   updatedAt?: Date;
 }
 
+const RouteStopSchema = new Schema(
+  {
+    name: { type: String, required: true },
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true },
+  },
+  { _id: false }
+);
+
 const driverSchema = new Schema<IDriver>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
@@ -75,15 +90,15 @@ const driverSchema = new Schema<IDriver>(
 
     routes: [
       {
-        _id: { type: Schema.Types.ObjectId, auto: true },
+        _id: false,
         routeTemplateId: {
           type: Schema.Types.ObjectId,
-          ref: "Route",
+          ref: "RouteTemplate",
           required: true,
         },
-        from: { type: String, required: true },
-        to: { type: String, required: true },
-        selectedStops: [{ type: String, required: true }],
+        from: { type: RouteStopSchema, required: true },
+        to: { type: RouteStopSchema, required: true },
+        selectedStops: { type: [RouteStopSchema], default: [] },
         times: [
           {
             time: { type: String, required: true },
@@ -91,7 +106,6 @@ const driverSchema = new Schema<IDriver>(
           },
         ],
         active: { type: Boolean, default: false },
-        date: { type: Date, default: null },
       },
     ],
 

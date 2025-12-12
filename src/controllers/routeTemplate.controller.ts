@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { createError } from "../utils/error.utils";
 import { RouteTemplate } from "../models/routeTemplate.model";
+import { haversine } from "../utils/haversine.utils";
 
 export const createRouteTemplate = async (
   req: Request,
@@ -8,19 +9,37 @@ export const createRouteTemplate = async (
   next: NextFunction
 ) => {
   try {
-    const { from, to, stops, estimatedDuration, baseFare, distance } = req.body;
+    const { from, to, stops, baseFare, pricePerKm } = req.body;
 
     if (!from || !to || !stops || !Array.isArray(stops)) {
       return next(createError(400, "from, to, and stops[] are required"));
     }
 
+    // Calculate distances between stops
+    const stopDistances: number[] = [];
+
+    for (let i = 0; i < stops.length - 1; i++) {
+      const a = stops[i];
+      const b = stops[i + 1];
+
+      if (!a.lat || !a.lng || !b.lat || !b.lng) {
+        return next(createError(400, "Each stop must include lat & lng"));
+      }
+
+      const dist = haversine(a.lat, a.lng, b.lat, b.lng);
+      stopDistances.push(Number(dist.toFixed(2)));
+    }
+
+    const totalDistance = stopDistances.reduce((a, b) => a + b, 0);
+
     const template = await RouteTemplate.create({
       from,
       to,
       stops,
-      estimatedDuration: estimatedDuration || null,
+      stopDistances,
+      totalDistance,
       baseFare: baseFare || 0,
-      distance: distance || null,
+      pricePerKm: pricePerKm || 2,
     });
 
     return res.status(201).json({
@@ -87,27 +106,41 @@ export const updateRouteTemplate = async (
   try {
     const { id } = req.params;
 
-    if (!id) {
-      return next(createError(400, "Route template ID is required"));
-    }
-
     const template = await RouteTemplate.findById(id);
-    if (!template) {
-      return next(createError(404, "Route template not found"));
-    }
+    if (!template) return next(createError(404, "Route template not found"));
 
-    const { from, to, stops, estimatedDuration, baseFare, distance } = req.body;
+    const { from, to, stops, baseFare, pricePerKm } = req.body;
 
     if (from) template.from = from;
     if (to) template.to = to;
-    if (stops) template.stops = stops;
-    if (estimatedDuration) template.estimatedDuration = estimatedDuration;
+
+    if (stops) {
+      template.stops = stops;
+
+      const stopDistances: number[] = [];
+
+      for (let i = 0; i < stops.length - 1; i++) {
+        const a = stops[i];
+        const b = stops[i + 1];
+
+        if (!a.lat || !a.lng || !b.lat || !b.lng) {
+          return next(createError(400, "Each stop must include lat & lng"));
+        }
+
+        const dist = haversine(a.lat, a.lng, b.lat, b.lng);
+        stopDistances.push(Number(dist.toFixed(2)));
+      }
+
+      template.stopDistances = stopDistances;
+      template.totalDistance = stopDistances.reduce((a, b) => a + b, 0);
+    }
+
     if (baseFare !== undefined) template.baseFare = baseFare;
-    if (distance) template.distance = distance;
+    if (pricePerKm !== undefined) template.pricePerKm = pricePerKm;
 
     await template.save();
 
-    return res.status(200).json({
+    return res.json({
       success: true,
       message: "Route template updated successfully",
       data: template,

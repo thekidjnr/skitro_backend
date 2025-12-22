@@ -13,7 +13,7 @@ export const generateToken = (user: IUser) => {
   };
 
   const options: SignOptions = {
-    expiresIn: "7d",
+    expiresIn: "1y",
   };
 
   return jwt.sign(payload, JWT_SECRET, options);

@@ -25,7 +25,7 @@ interface IDriver {
   userId: ObjectId;
 
   vehicleRegNumber: string;
-  vehicleType: string;
+  vehicleType: Schema.Types.ObjectId;
   vehicleCapacity?: number;
   seatsAvailable?: number;
 
@@ -74,7 +74,7 @@ const driverSchema = new Schema<IDriver>(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
 
     vehicleRegNumber: { type: String, required: true },
-    vehicleType: { type: String, required: true },
+    vehicleType: { type: Schema.Types.ObjectId, required: true },
     vehicleCapacity: { type: Number, default: 15 },
     seatsAvailable: { type: Number, default: 15 },
 

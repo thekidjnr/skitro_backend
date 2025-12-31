@@ -44,7 +44,7 @@ export function startTripGenerationCron() {
         for (const route of driver.routes) {
           if (!route.active) continue;
 
-          const today = startOfDay(new Date()); // normalized YYYY-MM-DD date
+          const today = startOfDay(new Date());
 
           const existingTrip = await Trip.findOne({
             driverId: driver._id,
@@ -74,7 +74,7 @@ export function startTripGenerationCron() {
                 date: today,
                 totalSeats: driver.vehicleCapacity,
                 availableSeats: driver.seatsAvailable ?? driver.vehicleCapacity,
-                price: 0, // Or pricing logic later
+                price: 0,
                 status: "scheduled",
               },
             ]);

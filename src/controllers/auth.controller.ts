@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from "express";
 import { User } from "../models/user.model";
 import { createError } from "../utils/error.utils";
 import { generateToken } from "../utils/jwt.utils";
+import { generateOtp, getOtpExpiry } from "../utils/otp.utils";
+import { sendSms } from "../utils/sendSMS.utils";
 
 export const startOnboarding = async (
   req: Request,
@@ -49,8 +51,6 @@ export const startOnboarding = async (
   }
 };
 
-const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
-
 export const sendOtp = async (
   req: Request,
   res: Response,
@@ -65,18 +65,20 @@ export const sendOtp = async (
     if (!user) return next(createError(404, "User not found"));
 
     const otp = generateOtp();
-    const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min expiry
+    const otpExpiresAt = getOtpExpiry(5);
 
     user.otp = otp;
     user.otpExpiresAt = otpExpiresAt;
     await user.save();
 
-    // TODO: Integrate SMS service here
-    console.log(`OTP for ${phone}: ${otp}`);
+    // await sendSms({
+    //   phoneNumber: phone,
+    //   message: `Your verification code is ${otp}. It expires in 5 minutes.`,
+    // });
 
+    console.log(otp);
     return res.json({
       success: true,
-      otp,
       message: "OTP sent successfully",
     });
   } catch (err) {

@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
-import Trip from "../models/trip.model";
-import Booking from "../models/booking.model";
 import { createError } from "../utils/error.utils";
+import { Driver } from "../models/driver.model";
+import { Booking } from "../models/booking.model";
 
 export const createBooking = async (
   req: Request,
@@ -9,26 +9,51 @@ export const createBooking = async (
   next: NextFunction
 ) => {
   try {
-    const { userId, tripId, seats } = req.body;
+    const { userId, driverId, routeTemplateId, date, time, from, to, fee } =
+      req.body;
 
-    const trip = await Trip.findById(tripId);
-    if (!trip) return next(createError(404, "Trip not found"));
+    if (
+      !userId ||
+      !driverId ||
+      !routeTemplateId ||
+      !date ||
+      !time ||
+      !from?.id ||
+      !to?.id ||
+      !fee
+    ) {
+      return next(createError(400, "Missing required fields"));
+    }
 
-    if (trip.availableSeats < seats)
-      return next(createError(400, "Not enough seats available"));
+    const driver = await Driver.findById(driverId);
+    if (!driver) return next(createError(404, "Driver not found"));
 
-    // Deduct seats
-    trip.availableSeats -= seats;
-    await trip.save();
+    const bookedCount = await Booking.countDocuments({
+      driverId,
+      routeTemplateId,
+      date,
+      time,
+      status: "booked",
+    });
+
+    if (bookedCount >= (driver.seatsAvailable || 0)) {
+      return next(createError(400, "No seats available"));
+    }
 
     const booking = await Booking.create({
       userId,
-      tripId,
-      seats,
-      amountPaid: seats * trip.price,
+      driverId,
+      routeTemplateId,
+      date,
+      time,
+      from,
+      to,
+      vehicleType: driver.vehicleType.toString(),
+      fee,
+      bookingCode: `SK-${Date.now()}`,
     });
 
-    return res.json({
+    return res.status(201).json({
       success: true,
       booking,
     });

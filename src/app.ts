@@ -8,6 +8,8 @@ import userRoutes from "./routes/user.routes";
 import cloudinaryRoutes from "./routes/cloudinary.routes";
 import driverRoutes from "./routes/driver.routes";
 import routeTemplateRoutes from "./routes/routeTemplate.routes";
+import vehicleTypeRoutes from "./routes/vehicleType.routes";
+import bookingRoutes from "./routes/booking.routes";
 
 const app = express();
 
@@ -21,7 +23,9 @@ app.use("/admins", adminRoutes);
 app.use("/users", userRoutes);
 app.use("/cloudinary", cloudinaryRoutes);
 app.use("/drivers", driverRoutes);
+app.use("/bookings", bookingRoutes);
 app.use("/route-templates", routeTemplateRoutes);
+app.use("/vehicle-types", vehicleTypeRoutes);
 
 app.get("/", (req: Request, res: Response) => {
   res.send("Skitro API is running...");

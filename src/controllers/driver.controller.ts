@@ -54,7 +54,7 @@ export const onboardDriver = async (
         selectedStops:
           r.selectedStops?.map((stopName: string) => {
             const stop = template.stops.find((s) => s.name === stopName);
-            return stop || { name: stopName, lat: 0, lng: 0 }; // fallback
+            return stop || { name: stopName, lat: 0, lng: 0 };
           }) || template.stops,
         times: r.times.map((t: string) => ({ time: t, enabled: true })), // convert strings to objects
         active: false,
@@ -125,6 +125,29 @@ export const toggleDriverStatus = async (
       success: true,
       message: `Driver is now ${isOnline ? "online" : "offline"}`,
       data: { driverId: driver._id, isOnline: driver.isOnline },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getDriver = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+
+    const driver = await Driver.findById(id);
+
+    if (!driver) {
+      return next(createError(404, "Driver not found"));
+    }
+
+    return res.json({
+      success: true,
+      routes: driver.routes,
     });
   } catch (err) {
     next(err);

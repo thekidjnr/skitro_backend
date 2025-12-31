@@ -14,14 +14,10 @@ const vehicleTypeSchema = new Schema<IVehicleType>(
   {
     name: { type: String, required: true, unique: true },
 
-    capacity: { type: Number, default: 0 }, // default 0 if not provided
-
     stickerImage: {
       url: { type: String, required: true },
       public_id: { type: String, required: true },
     },
-
-    active: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

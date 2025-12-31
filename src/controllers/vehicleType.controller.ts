@@ -37,7 +37,7 @@ export const getVehicleTypes = async (
   next: NextFunction
 ) => {
   try {
-    const vehicleTypes = await VehicleType.find({ active: true }).sort({
+    const vehicleTypes = await VehicleType.find().sort({
       name: 1,
     });
 

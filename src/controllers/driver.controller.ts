@@ -2,6 +2,9 @@ import { Request, Response, NextFunction } from "express";
 import { Driver } from "../models/driver.model";
 import { createError } from "../utils/error.utils";
 import { RouteTemplate } from "../models/routeTemplate.model";
+import mongoose from "mongoose";
+import { User } from "../models/user.model";
+import { generateToken } from "../utils/jwt.utils";
 
 export const onboardDriver = async (
   req: Request,
@@ -38,25 +41,47 @@ export const onboardDriver = async (
       return next(createError(400, "Driver already onboarded"));
     }
 
-    // 3. Validate route templates
+    // 3. Validate route templates (ID-based)
     const validatedRoutes = [];
+
     for (const r of routes) {
       const template = await RouteTemplate.findById(r.routeTemplateId);
-      if (!template)
+      if (!template) {
         return next(
           createError(404, `Route template not found: ${r.routeTemplateId}`)
         );
+      }
+      console.log("nnn", template);
+
+      // Ensure from/to exist in template
+      const stopIds = [
+        template.from._id.toString(),
+        template.to._id.toString(),
+        ...template.stops.map((s) => s._id.toString()),
+      ];
+
+      if (!stopIds.includes(r.from) || !stopIds.includes(r.to)) {
+        return next(
+          createError(400, "Invalid from/to stop for route template")
+        );
+      }
+
+      // Ensure selected stops belong to template
+      if (r.selectedStops?.some((s: string) => !stopIds.includes(s))) {
+        return next(
+          createError(400, "Invalid selected stop for route template")
+        );
+      }
 
       validatedRoutes.push({
         routeTemplateId: r.routeTemplateId,
-        from: template.from, // auto fill
-        to: template.to, // auto fill
-        selectedStops:
-          r.selectedStops?.map((stopName: string) => {
-            const stop = template.stops.find((s) => s.name === stopName);
-            return stop || { name: stopName, lat: 0, lng: 0 };
-          }) || template.stops,
-        times: r.times.map((t: string) => ({ time: t, enabled: true })), // convert strings to objects
+        from: r.from, // ObjectId
+        to: r.to, // ObjectId
+        selectedStops: r.selectedStops || [],
+        times: r.times.map((t: string) => ({
+          time: t,
+          enabled: true,
+        })),
         active: false,
       });
     }
@@ -90,10 +115,25 @@ export const onboardDriver = async (
       },
     });
 
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        driverId: driver._id,
+        $addToSet: { role: "driver" },
+      },
+      { new: true }
+    );
+
+    const token = generateToken(user!);
+
     return res.status(201).json({
       success: true,
       message: "Driver onboarded successfully",
-      data: driver,
+      data: {
+        driver,
+        user,
+        token,
+      },
     });
   } catch (err) {
     next(err);
@@ -137,17 +177,134 @@ export const getDriver = async (
   next: NextFunction
 ) => {
   try {
-    const { id } = req.params;
+    const driverId = req.user?.driverId;
+    if (!driverId) return next(createError(401, "Not authorized"));
 
-    const driver = await Driver.findById(id);
+    const driver = await Driver.findById(driverId);
+    if (!driver) return next(createError(404, "Driver not found"));
 
-    if (!driver) {
-      return next(createError(404, "Driver not found"));
-    }
+    const user = await User.findById(driver.userId);
+    if (!user) return next(createError(404, "User not found"));
 
     return res.json({
       success: true,
-      routes: driver.routes,
+      data: {
+        driver,
+        user,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const searchDriversByRoute = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { routeTemplateId, fromId, toId } = req.query;
+
+    if (!routeTemplateId || !fromId || !toId) {
+      return next(
+        createError(400, "routeTemplateId, fromId and toId are required")
+      );
+    }
+
+    const routeTemplateObjectId = new mongoose.Types.ObjectId(
+      routeTemplateId as string
+    );
+    const fromObjectId = new mongoose.Types.ObjectId(fromId as string);
+    const toObjectId = new mongoose.Types.ObjectId(toId as string);
+
+    const routeTemplate = await RouteTemplate.findById(routeTemplateObjectId);
+
+    if (!routeTemplate) {
+      return next(createError(404, "Route template not found"));
+    }
+
+    const allStops = [
+      routeTemplate.from,
+      ...routeTemplate.stops,
+      routeTemplate.to,
+    ];
+
+    const fromIndex = allStops.findIndex(
+      (s) => s._id.toString() === fromObjectId.toString()
+    );
+
+    const toIndex = allStops.findIndex(
+      (s) => s._id.toString() === toObjectId.toString()
+    );
+
+    if (fromIndex === -1 || toIndex === -1 || fromIndex >= toIndex) {
+      return next(createError(400, "Invalid stop order"));
+    }
+
+    const drivers = await Driver.find({
+      isOnline: true,
+      seatsAvailable: { $gt: 0 },
+
+      routes: {
+        $elemMatch: {
+          routeTemplateId: routeTemplateObjectId,
+          active: true,
+
+          $and: [
+            {
+              $or: [{ from: fromObjectId }, { selectedStops: fromObjectId }],
+            },
+            {
+              $or: [{ to: toObjectId }, { selectedStops: toObjectId }],
+            },
+          ],
+        },
+      },
+    });
+
+    const matchedDrivers = drivers
+      .map((driver) => {
+        const matchingRoutes = driver.routes.filter((route) => {
+          if (!route.active) return false;
+
+          if (
+            route.routeTemplateId.toString() !==
+            routeTemplateObjectId.toString()
+          ) {
+            return false;
+          }
+
+          const fromMatch =
+            route.from.toString() === fromObjectId.toString() ||
+            route.selectedStops.some(
+              (s) => s.toString() === fromObjectId.toString()
+            );
+
+          const toMatch =
+            route.to.toString() === toObjectId.toString() ||
+            route.selectedStops.some(
+              (s) => s.toString() === toObjectId.toString()
+            );
+
+          return fromMatch && toMatch;
+        });
+
+        if (!matchingRoutes.length) return null;
+
+        return {
+          driverId: driver._id,
+          vehicleType: driver.vehicleType,
+          seatsAvailable: driver.seatsAvailable,
+          routes: matchingRoutes,
+        };
+      })
+      .filter(Boolean);
+
+    return res.json({
+      success: true,
+      count: matchedDrivers.filter(Boolean).length,
+      drivers: matchedDrivers.filter(Boolean),
     });
   } catch (err) {
     next(err);
@@ -202,9 +359,9 @@ export const addDriverRoute = async (
 ) => {
   try {
     const driverId = req.params.id;
-    const { routeTemplateId, selectedStops, times } = req.body;
+    const { routeTemplateId, from, to, selectedStops, times } = req.body;
 
-    if (!routeTemplateId || !selectedStops || !times) {
+    if (!routeTemplateId || !from || !to || !times) {
       return next(createError(400, "Missing required route fields"));
     }
 
@@ -214,12 +371,24 @@ export const addDriverRoute = async (
     const template = await RouteTemplate.findById(routeTemplateId);
     if (!template) return next(createError(404, "Route template not found"));
 
+    // Validate that from/to/selectedStops exist in template
+    const stopIds = template.stops.map((s) => s._id.toString());
+
+    if (!stopIds.includes(from) || !stopIds.includes(to)) {
+      return next(createError(400, "Invalid from/to stop for route template"));
+    }
+
+    if (selectedStops?.some((s: string) => !stopIds.includes(s))) {
+      return next(createError(400, "Invalid selected stop for route template"));
+    }
+
     const newRoute = {
       routeTemplateId,
-      from: template.from,
-      to: template.to,
-      selectedStops,
-      times,
+      from,
+      to,
+      selectedStops: selectedStops || [],
+      times: times.map((t: string) => ({ time: t, enabled: true })),
+      active: false,
     };
 
     driver.routes.push(newRoute);

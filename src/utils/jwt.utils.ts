@@ -8,6 +8,7 @@ export const generateToken = (user: IUser) => {
 
   const payload = {
     id: user._id?.toString(),
+    driverId: user?.driverId,
     phone: user.phone,
     role: user.role,
   };

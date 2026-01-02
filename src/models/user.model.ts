@@ -14,6 +14,8 @@ const userSchema = new Schema<IUser>(
     firstName: { type: String },
     lastName: { type: String },
     email: { type: String },
+
+    driverId: { type: Schema.Types.ObjectId, ref: "Driver", default: null },
   },
   { timestamps: true }
 );

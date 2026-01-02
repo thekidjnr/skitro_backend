@@ -9,18 +9,19 @@ export const createRouteTemplate = async (
   next: NextFunction
 ) => {
   try {
-    const { from, to, stops, baseFare, pricePerKm } = req.body;
+    const { from, to, stops, pricePerKm = 2 } = req.body;
 
     if (!from || !to || !stops || !Array.isArray(stops)) {
       return next(createError(400, "from, to, and stops[] are required"));
     }
 
-    // Calculate distances between stops
-    const stopDistances: number[] = [];
+    // Combine from, stops, to into one array for easier distance calculation
+    const allStops = [from, ...stops, to];
 
-    for (let i = 0; i < stops.length - 1; i++) {
-      const a = stops[i];
-      const b = stops[i + 1];
+    const stopDistances: number[] = [];
+    for (let i = 0; i < allStops.length - 1; i++) {
+      const a = allStops[i];
+      const b = allStops[i + 1];
 
       if (!a.lat || !a.lng || !b.lat || !b.lng) {
         return next(createError(400, "Each stop must include lat & lng"));
@@ -32,14 +33,17 @@ export const createRouteTemplate = async (
 
     const totalDistance = stopDistances.reduce((a, b) => a + b, 0);
 
+    // Calculate baseFare based on total distance and pricePerKm
+    const baseFare = Number((totalDistance * pricePerKm).toFixed(2));
+
     const template = await RouteTemplate.create({
       from,
       to,
       stops,
       stopDistances,
       totalDistance,
-      baseFare: baseFare || 0,
-      pricePerKm: pricePerKm || 2,
+      baseFare,
+      pricePerKm,
     });
 
     return res.status(201).json({

@@ -1,6 +1,7 @@
-import { Schema, model } from "mongoose";
+import { ObjectId, Schema, model } from "mongoose";
 
 interface IRouteStop {
+  _id: ObjectId;
   name: string;
   lat: number;
   lng: number;

@@ -5,17 +5,17 @@ interface IRouteTime {
   enabled: boolean;
 }
 
-interface IRouteStop {
-  name: string;
-  lat: number;
-  lng: number;
-}
+// interface IRouteStop {
+//   name: string;
+//   lat: number;
+//   lng: number;
+// }
 
 interface IDriverRoute {
   routeTemplateId: ObjectId;
-  from: IRouteStop;
-  to: IRouteStop;
-  selectedStops: IRouteStop[];
+  from: ObjectId;
+  to: ObjectId;
+  selectedStops: ObjectId[];
   times: IRouteTime[];
   active?: boolean;
   date?: Date;
@@ -60,14 +60,14 @@ interface IDriver {
   updatedAt?: Date;
 }
 
-const RouteStopSchema = new Schema(
-  {
-    name: { type: String, required: true },
-    lat: { type: Number, required: true },
-    lng: { type: Number, required: true },
-  },
-  { _id: false }
-);
+// const RouteStopSchema = new Schema(
+//   {
+//     name: { type: String, required: true },
+//     lat: { type: Number, required: true },
+//     lng: { type: Number, required: true },
+//   },
+//   { _id: false }
+// );
 
 const driverSchema = new Schema<IDriver>(
   {
@@ -96,20 +96,20 @@ const driverSchema = new Schema<IDriver>(
           ref: "RouteTemplate",
           required: true,
         },
-        from: { type: RouteStopSchema, required: true },
-        to: { type: RouteStopSchema, required: true },
-        selectedStops: { type: [RouteStopSchema], default: [] },
+        from: { type: Schema.Types.ObjectId, required: true },
+        to: { type: Schema.Types.ObjectId, required: true },
+        selectedStops: { type: [Schema.Types.ObjectId], default: [] },
         times: [
           {
             time: { type: String, required: true },
             enabled: { type: Boolean, default: true },
           },
         ],
-        active: { type: Boolean, default: false },
+        active: { type: Boolean, default: true },
       },
     ],
 
-    isOnline: { type: Boolean, default: false },
+    isOnline: { type: Boolean, default: true },
 
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },

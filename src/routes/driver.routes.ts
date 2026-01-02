@@ -4,6 +4,7 @@ import {
   deleteDriverRoute,
   getDriver,
   onboardDriver,
+  searchDriversByRoute,
   toggleDriverStatus,
   updateDriverLocation,
 } from "../controllers/driver.controller";
@@ -16,7 +17,8 @@ router.post("/onboard", protect, onboardDriver);
 router.patch("/:id/status", protect, toggleDriverStatus);
 router.patch("/:id/location", updateDriverLocation);
 
-router.get("/:id", getDriver);
+router.get("/search-by-route", searchDriversByRoute);
+router.get("/me", protect, getDriver);
 
 router.post("/:id/route", addDriverRoute);
 router.patch("/:id/route/:routeId", addDriverRoute);

@@ -3,7 +3,6 @@ import { User } from "../models/user.model";
 import { createError } from "../utils/error.utils";
 import { generateToken } from "../utils/jwt.utils";
 import { generateOtp, getOtpExpiry } from "../utils/otp.utils";
-import { sendSms } from "../utils/sendSMS.utils";
 
 export const startOnboarding = async (
   req: Request,
@@ -79,6 +78,7 @@ export const sendOtp = async (
     console.log(otp);
     return res.json({
       success: true,
+      otp,
       message: "OTP sent successfully",
     });
   } catch (err) {

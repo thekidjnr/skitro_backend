@@ -11,11 +11,9 @@ interface IRouteTemplate {
   from: IRouteStop;
   to: IRouteStop;
   stops: IRouteStop[];
-  stopDistances?: number[]; // kms between successive stops
-  baseFare?: number;
+  stopDistances?: number[];
   pricePerKm?: number;
   estimatedDuration?: number;
-  totalDistance?: number;
 }
 
 const stopSchema = new Schema<IRouteStop>({
@@ -32,10 +30,8 @@ const routeTemplateSchema = new Schema<IRouteTemplate>(
     stops: { type: [stopSchema], required: true },
 
     stopDistances: { type: [Number], default: [] },
-    baseFare: { type: Number, default: 0 },
-    pricePerKm: { type: Number, default: 2 }, // example value per km
+    pricePerKm: { type: Number, default: 2 },
     estimatedDuration: { type: Number, default: null },
-    totalDistance: { type: Number, default: null },
   },
   { timestamps: true }
 );

@@ -9,21 +9,15 @@ export interface IBooking extends Document {
   date: string;
   time: string;
 
-  from: {
-    id: mongoose.Types.ObjectId;
-    name: string;
-  };
+  from: mongoose.Types.ObjectId;
 
-  to: {
-    id: mongoose.Types.ObjectId;
-    name: string;
-  };
+  to: mongoose.Types.ObjectId;
 
   vehicleType: mongoose.Types.ObjectId;
 
   fee: number;
 
-  status: "booked" | "cancelled" | "completed";
+  status: "pending" | "booked" | "cancelled" | "completed";
   paymentStatus: "pending" | "paid" | "refunded";
 
   bookingCode: string;
@@ -49,15 +43,9 @@ const bookingSchema = new Schema<IBooking>(
     date: { type: String, required: true },
     time: { type: String, required: true },
 
-    from: {
-      id: { type: Schema.Types.ObjectId, required: true },
-      name: { type: String, required: true },
-    },
+    from: { type: Schema.Types.ObjectId, required: true },
 
-    to: {
-      id: { type: Schema.Types.ObjectId, required: true },
-      name: { type: String, required: true },
-    },
+    to: { type: Schema.Types.ObjectId, required: true },
 
     vehicleType: {
       type: Schema.Types.ObjectId,
@@ -69,8 +57,8 @@ const bookingSchema = new Schema<IBooking>(
 
     status: {
       type: String,
-      enum: ["booked", "cancelled", "completed"],
-      default: "booked",
+      enum: ["pending", "booked", "cancelled", "completed"],
+      default: "pending",
     },
 
     paymentStatus: {

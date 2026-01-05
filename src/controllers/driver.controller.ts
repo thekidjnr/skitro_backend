@@ -51,7 +51,6 @@ export const onboardDriver = async (
           createError(404, `Route template not found: ${r.routeTemplateId}`)
         );
       }
-      console.log("nnn", template);
 
       // Ensure from/to exist in template
       const stopIds = [
@@ -92,7 +91,6 @@ export const onboardDriver = async (
       vehicleRegNumber,
       vehicleType,
       vehicleCapacity: vehicleCapacity || 15,
-      seatsAvailable: vehicleCapacity || 15,
 
       vehicleImage: {
         url: vehicleImage?.url || null,
@@ -181,6 +179,32 @@ export const getDriver = async (
     if (!driverId) return next(createError(401, "Not authorized"));
 
     const driver = await Driver.findById(driverId);
+    if (!driver) return next(createError(404, "Driver not found"));
+
+    const user = await User.findById(driver.userId);
+    if (!user) return next(createError(404, "User not found"));
+
+    return res.json({
+      success: true,
+      data: {
+        driver,
+        user,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getDriverById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+
+    const driver = await Driver.findById(id);
     if (!driver) return next(createError(404, "Driver not found"));
 
     const user = await User.findById(driver.userId);
@@ -295,7 +319,6 @@ export const searchDriversByRoute = async (
         return {
           driverId: driver._id,
           vehicleType: driver.vehicleType,
-          seatsAvailable: driver.seatsAvailable,
           routes: matchingRoutes,
         };
       })

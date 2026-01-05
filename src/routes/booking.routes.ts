@@ -1,8 +1,12 @@
 import { Router } from "express";
-import { createBooking } from "../controllers/booking.controller";
+import {
+  createBooking,
+  verifyPayment,
+} from "../controllers/booking.controller";
 
 const router = Router();
 
 router.post("/", createBooking);
+router.post("/verify", verifyPayment);
 
 export default router;

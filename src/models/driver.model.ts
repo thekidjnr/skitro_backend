@@ -1,15 +1,9 @@
-import { ObjectId, Schema, model } from "mongoose";
+import mongoose, { ObjectId, Schema, model } from "mongoose";
 
 interface IRouteTime {
   time: string;
   enabled: boolean;
 }
-
-// interface IRouteStop {
-//   name: string;
-//   lat: number;
-//   lng: number;
-// }
 
 interface IDriverRoute {
   routeTemplateId: ObjectId;
@@ -25,9 +19,8 @@ interface IDriver {
   userId: ObjectId;
 
   vehicleRegNumber: string;
-  vehicleType: Schema.Types.ObjectId;
-  vehicleCapacity?: number;
-  seatsAvailable?: number;
+  vehicleType: mongoose.Types.ObjectId;
+  vehicleCapacity: number;
 
   vehicleImage: {
     url: string;
@@ -76,7 +69,6 @@ const driverSchema = new Schema<IDriver>(
     vehicleRegNumber: { type: String, required: true },
     vehicleType: { type: Schema.Types.ObjectId, required: true },
     vehicleCapacity: { type: Number, default: 15 },
-    seatsAvailable: { type: Number, default: 15 },
 
     vehicleImage: {
       url: { type: String, default: null },

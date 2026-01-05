@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { createError } from "../utils/error.utils";
 import { RouteTemplate } from "../models/routeTemplate.model";
-import { haversine } from "../utils/haversine.utils";
+import { GeoPoint, haversine, haversinePoints } from "../utils/haversine.utils";
 
 export const createRouteTemplate = async (
   req: Request,
@@ -41,8 +41,6 @@ export const createRouteTemplate = async (
       to,
       stops,
       stopDistances,
-      totalDistance,
-      baseFare,
       pricePerKm,
     });
 
@@ -50,6 +48,82 @@ export const createRouteTemplate = async (
       success: true,
       message: "Route template created successfully",
       data: template,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const estimateRouteFare = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params; // routeTemplate ID
+    const { fromStopId, toStopId } = req.body;
+
+    if (!fromStopId || !toStopId) {
+      return next(createError(400, "fromStopId and toStopId are required"));
+    }
+
+    const routeTemplate = await RouteTemplate.findById(id);
+    if (!routeTemplate) {
+      return next(createError(404, "Route template not found"));
+    }
+
+    // Find the fromStop
+    const fromStop: GeoPoint | undefined =
+      routeTemplate.from._id.toString() === fromStopId
+        ? routeTemplate.from
+        : routeTemplate.stops.find((s) => s._id.toString() === fromStopId);
+
+    // Find the toStop
+    const toStop: GeoPoint | undefined =
+      routeTemplate.to._id.toString() === toStopId
+        ? routeTemplate.to
+        : routeTemplate.stops.find((s) => s._id.toString() === toStopId);
+
+    if (!fromStop || !toStop) {
+      return next(createError(400, "Invalid stop selection"));
+    }
+
+    // Ensure from comes before to in the route order
+    const allStops = [
+      routeTemplate.from,
+      ...routeTemplate.stops,
+      routeTemplate.to,
+    ];
+    const fromIndex = allStops.findIndex(
+      (s) => s._id.toString() === fromStopId
+    );
+    const toIndex = allStops.findIndex((s) => s._id.toString() === toStopId);
+
+    if (fromIndex >= toIndex) {
+      return next(createError(400, "`from` stop must come before `to` stop"));
+    }
+
+    // Calculate straight-line distance
+    const distanceKm = haversinePoints(fromStop, toStop);
+
+    if (typeof routeTemplate.pricePerKm !== "number") {
+      return next(
+        createError(400, "pricePerKm is not configured for this route")
+      );
+    }
+
+    const fare = Number((distanceKm * routeTemplate.pricePerKm).toFixed(2));
+
+    return res.json({
+      success: true,
+      data: {
+        routeTemplateId: id,
+        fromStopId,
+        toStopId,
+        distanceKm: Number(distanceKm.toFixed(2)),
+        pricePerKm: routeTemplate.pricePerKm,
+        fare,
+      },
     });
   } catch (err) {
     next(err);
@@ -136,10 +210,8 @@ export const updateRouteTemplate = async (
       }
 
       template.stopDistances = stopDistances;
-      template.totalDistance = stopDistances.reduce((a, b) => a + b, 0);
     }
 
-    if (baseFare !== undefined) template.baseFare = baseFare;
     if (pricePerKm !== undefined) template.pricePerKm = pricePerKm;
 
     await template.save();

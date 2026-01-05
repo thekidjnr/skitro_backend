@@ -112,7 +112,7 @@ export const verifyPayment = async (
 ) => {
   try {
     const { reference } = req.query;
-    console.log(reference);
+
     if (!reference) {
       return next(createError(400, "Payment reference is required"));
     }

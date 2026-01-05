@@ -3,6 +3,7 @@ import { User } from "../models/user.model";
 import { createError } from "../utils/error.utils";
 import { generateToken } from "../utils/jwt.utils";
 import { generateOtp, getOtpExpiry } from "../utils/otp.utils";
+import { sendSms } from "../utils/sendSMS.utils";
 
 export const startOnboarding = async (
   req: Request,
@@ -70,10 +71,10 @@ export const sendOtp = async (
     user.otpExpiresAt = otpExpiresAt;
     await user.save();
 
-    // await sendSms({
-    //   phoneNumber: phone,
-    //   message: `Your verification code is ${otp}. It expires in 5 minutes.`,
-    // });
+    await sendSms({
+      phoneNumber: phone,
+      message: `Your verification code is ${otp}. It expires in 5 minutes.`,
+    });
 
     console.log(otp);
     return res.json({

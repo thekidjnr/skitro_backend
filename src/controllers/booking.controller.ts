@@ -65,10 +65,9 @@ export const createBooking = async (
       date,
       time,
 
-      from: new mongoose.Types.ObjectId(from.id),
-      to: new mongoose.Types.ObjectId(to.id),
-
-      vehicleType: new mongoose.Types.ObjectId(driver.vehicleType),
+      from,
+      to,
+      vehicleType: driver.vehicleType,
       fee,
       status: "pending",
       paymentStatus: "pending",
@@ -163,5 +162,174 @@ export const verifyPayment = async (
   } catch (err) {
     console.error(err);
     next(createError(500, "Payment verification failed"));
+  }
+};
+
+export const getBookingById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return next(createError(400, "Invalid booking ID"));
+    }
+
+    const booking = await Booking.findById(id)
+      .populate({
+        path: "driverId",
+        populate: {
+          path: "userId",
+          select: "firstName lastName email phone",
+        },
+      })
+      .populate("vehicleType")
+      .populate({
+        path: "routeTemplateId",
+        select: "from to stops",
+      });
+
+    if (!booking) {
+      return next(createError(404, "Booking not found"));
+    }
+
+    const route = booking.routeTemplateId as any;
+
+    const findStop = (stopId: any) => {
+      if (!route || !stopId) return null;
+      if (route.from._id.equals(stopId)) return route.from;
+      if (route.to._id.equals(stopId)) return route.to;
+      const stopInStops = route.stops.find((s: any) => s._id.equals(stopId));
+      return stopInStops || null;
+    };
+
+    const enrichedBooking = {
+      ...booking.toObject(),
+      from: findStop(booking.from),
+      to: findStop(booking.to),
+    };
+
+    return res.status(200).json({
+      success: true,
+      booking: enrichedBooking,
+    });
+  } catch (err) {
+    console.error(err);
+    next(createError(500, "Failed to fetch booking"));
+  }
+};
+
+export const getBookingByCode = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { bookingCode } = req.params;
+
+    if (!bookingCode) {
+      return next(createError(400, "Booking code is required"));
+    }
+
+    const booking = await Booking.findOne({ bookingCode })
+      .populate({
+        path: "driverId",
+        populate: {
+          path: "userId",
+          select: "firstName lastName email phone",
+        },
+      })
+      .populate("vehicleType")
+      .populate({
+        path: "routeTemplateId",
+        select: "from to stops",
+      });
+
+    if (!booking) {
+      return next(createError(404, "Booking not found"));
+    }
+
+    const route = booking.routeTemplateId as any;
+
+    const findStop = (stopId: any) => {
+      if (!route || !stopId) return null;
+      if (route.from._id.equals(stopId)) return route.from;
+      if (route.to._id.equals(stopId)) return route.to;
+      const stopInStops = route.stops.find((s: any) => s._id.equals(stopId));
+      return stopInStops || null;
+    };
+
+    const enrichedBooking = {
+      ...booking.toObject(),
+      from: findStop(booking.from),
+      to: findStop(booking.to),
+    };
+
+    return res.status(200).json({
+      success: true,
+      booking: enrichedBooking,
+    });
+  } catch (err) {
+    console.error(err);
+    next(createError(500, "Failed to fetch booking"));
+  }
+};
+
+export const getBookingsByUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return next(createError(401, "Unauthorized"));
+    }
+
+    const bookings = await Booking.find({ userId })
+      .populate({
+        path: "driverId",
+        populate: {
+          path: "userId",
+          select: "firstName lastName email phone",
+        },
+      })
+      .populate("vehicleType")
+      .populate({
+        path: "routeTemplateId",
+      })
+      .sort({ createdAt: -1 });
+
+    const enrichedBookings = bookings.map((b) => {
+      const route = b.routeTemplateId as any;
+
+      if (!route) return b.toObject();
+
+      // Helper to find stop by _id
+      const findStop = (stopId: any) => {
+        if (!stopId) return null;
+        if (route.from._id.equals(stopId)) return route.from;
+        if (route.to._id.equals(stopId)) return route.to;
+        const stopInStops = route.stops.find((s: any) => s._id.equals(stopId));
+        return stopInStops || null;
+      };
+
+      return {
+        ...b.toObject(),
+        from: findStop(b.from),
+        to: findStop(b.to),
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: bookings.length,
+      bookings: enrichedBookings,
+    });
+  } catch (err) {
+    console.error(err);
+    next(createError(500, "Failed to fetch user bookings"));
   }
 };

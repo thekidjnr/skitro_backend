@@ -268,7 +268,6 @@ export const searchDriversByRoute = async (
 
     const drivers = await Driver.find({
       isOnline: true,
-      seatsAvailable: { $gt: 0 },
 
       routes: {
         $elemMatch: {
@@ -286,6 +285,7 @@ export const searchDriversByRoute = async (
         },
       },
     });
+    console.log("drive", routeTemplateObjectId, fromObjectId, toObjectId);
 
     const matchedDrivers = drivers
       .map((driver) => {

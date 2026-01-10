@@ -7,7 +7,6 @@ const userSchema = new Schema<IUser>(
     lastName: { type: String },
     email: { type: String },
 
-    driverId: { type: Schema.Types.ObjectId, ref: "Driver", default: null },
     driverId: {
       type: Schema.Types.ObjectId,
       ref: "Driver",

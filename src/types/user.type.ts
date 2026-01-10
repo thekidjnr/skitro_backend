@@ -6,8 +6,7 @@ export interface IUser {
   phone: string;
   isPhoneVerified: boolean;
 
-  otp?: string;
-  otpExpiresAt?: Date;
+  otpReference?: string;
 
   firstName?: string;
   lastName?: string;

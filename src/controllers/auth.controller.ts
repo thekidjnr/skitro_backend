@@ -4,6 +4,7 @@ import { createError } from "../utils/error.utils";
 import { generateToken } from "../utils/jwt.utils";
 import { generateOtp, getOtpExpiry } from "../utils/otp.utils";
 import { sendSms } from "../utils/sendSMS.utils";
+import axios from "axios";
 
 export const startOnboarding = async (
   req: Request,
@@ -33,10 +34,9 @@ export const startOnboarding = async (
     }
 
     const newUser = new User({
-      role,
+      role: [role],
       phone,
       isPhoneVerified: false,
-      onboardingComplete: false,
     });
 
     await newUser.save();
@@ -64,26 +64,39 @@ export const sendOtp = async (
     const user = await User.findOne({ phone });
     if (!user) return next(createError(404, "User not found"));
 
-    const otp = generateOtp();
-    const otpExpiresAt = getOtpExpiry(5);
+    const response = await axios.post(
+      "https://api.gatekeeperpro.live/api/generate_otp",
+      {
+        project: process.env.GATEKEEPER_PROJECT_ID,
+        phoneNumber: phone,
+        size: 6,
+        extra: {
+          userId: user._id.toString(),
+          purpose: "login",
+        },
+      },
+      {
+        headers: {
+          "X-API-Key": process.env.GATEKEEPER_API_KEY!,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-    user.otp = otp;
-    user.otpExpiresAt = otpExpiresAt;
+    const { reference, expiresAt } = response.data;
+
+    // Store ONLY the reference
+    user.otpReference = reference;
     await user.save();
 
-    await sendSms({
-      phoneNumber: phone,
-      message: `Your verification code is ${otp}. It expires in 5 minutes.`,
-    });
-
-    console.log(otp);
     return res.json({
       success: true,
-      otp,
       message: "OTP sent successfully",
+      expiresAt,
     });
   } catch (err) {
-    next(err);
+    console.error(err);
+    next(createError(500, "Failed to send OTP"));
   }
 };
 
@@ -100,27 +113,34 @@ export const verifyOtp = async (
     }
 
     const user = await User.findOne({ phone });
-    if (!user) return next(createError(404, "User not found"));
-
-    if (!user.otp || !user.otpExpiresAt) {
-      return next(createError(400, "OTP not requested or expired"));
+    if (!user || !user.otpReference) {
+      return next(createError(400, "OTP not requested"));
     }
 
-    if (user.otpExpiresAt < new Date()) {
-      return next(createError(400, "OTP has expired"));
+    console.log("ref", user.otpReference);
+    const response = await axios.post(
+      "https://api.gatekeeperpro.live/api/verify_otp",
+      {
+        reference: user.otpReference,
+        otp,
+      },
+      {
+        headers: {
+          "X-API-Key": process.env.GATEKEEPER_API_KEY!,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!response.data?.verified) {
+      return next(createError(400, "Invalid or expired OTP"));
     }
 
-    if (user.otp !== otp) {
-      return next(createError(400, "Invalid OTP"));
-    }
-
-    // OTP verified → update user
+    // OTP verified
     user.isPhoneVerified = true;
-    user.otp = undefined;
-    user.otpExpiresAt = undefined;
+    user.otpReference = undefined;
     await user.save();
 
-    // Generate JWT here
     const token = generateToken(user);
 
     return res.json({
@@ -132,7 +152,8 @@ export const verifyOtp = async (
       },
     });
   } catch (err) {
-    next(err);
+    console.error(err);
+    next(createError(500, "OTP verification failed"));
   }
 };
 
@@ -158,7 +179,6 @@ export const completeProfile = async (
     user.firstName = firstName;
     user.lastName = lastName;
     user.email = email;
-    user.onboardingComplete = true;
 
     await user.save();
 

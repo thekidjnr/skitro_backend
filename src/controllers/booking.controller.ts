@@ -5,31 +5,33 @@ import { Booking } from "../models/booking.model";
 import axios from "axios";
 import mongoose from "mongoose";
 import crypto from "crypto";
+import { Trip } from "../models/trip.model";
 
 export const createBooking = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
+  const session = await mongoose.startSession();
+  console.log(req.body);
   try {
     const {
       userId,
       driverId,
       routeTemplateId,
-      date,
-      time,
+      departureTime,
       from,
       to,
       fee,
       email,
     } = req.body;
 
+    // 1️⃣ Validate required fields
     if (
       !userId ||
       !driverId ||
       !routeTemplateId ||
-      !date ||
-      !time ||
+      !departureTime ||
       !from ||
       !to ||
       !fee ||
@@ -38,45 +40,81 @@ export const createBooking = async (
       return next(createError(400, "Missing required fields"));
     }
 
-    const driver = await Driver.findById(driverId);
-    if (!driver) return next(createError(404, "Driver not found"));
+    // 2️⃣ Parse & validate departureTime
+    const parsedDepartureTime = new Date(departureTime);
 
-    // ✅ ONLY count PAID + BOOKED seats
-    const bookedSeats = await Booking.countDocuments({
-      driverId,
-      routeTemplateId,
-      date,
-      time,
-      status: "booked",
-      paymentStatus: "paid",
-    });
+    if (isNaN(parsedDepartureTime.getTime())) {
+      return next(createError(400, "Invalid departureTime"));
+    }
 
-    if (bookedSeats >= driver.vehicleCapacity) {
+    session.startTransaction();
+
+    // 3️⃣ Validate driver exists
+    const driver = await Driver.findById(driverId).session(session);
+    if (!driver) {
+      await session.abortTransaction();
+      return next(createError(404, "Driver not found"));
+    }
+
+    // 4️⃣ Find existing trip or create one
+    const trip = await Trip.findOneAndUpdate(
+      { driverId, routeTemplateId, departureTime: parsedDepartureTime },
+      {
+        $setOnInsert: {
+          driverId,
+          routeTemplateId,
+          departureTime: parsedDepartureTime,
+          from,
+          to,
+          vehicleCapacity: driver.vehicleCapacity,
+          seatsBooked: 0,
+          status: "scheduled",
+        },
+      },
+      { new: true, upsert: true, session },
+    );
+
+    if (!trip) {
+      throw new Error("Failed to create or fetch trip");
+    }
+
+    // 5️⃣ Check seat availability
+    if (trip.seatsBooked >= trip.vehicleCapacity) {
+      await session.abortTransaction();
       return next(createError(400, "No seats available"));
     }
 
+    // 6️⃣ Create booking
     const bookingCode = `SK-${Date.now()}-${crypto.randomInt(1000, 9999)}`;
 
-    const booking = new Booking({
-      userId: new mongoose.Types.ObjectId(userId),
-      driverId: new mongoose.Types.ObjectId(driverId),
-      routeTemplateId: new mongoose.Types.ObjectId(routeTemplateId),
+    const booking = await Booking.create(
+      [
+        {
+          userId,
+          driverId,
+          tripId: trip._id,
+          routeTemplateId,
+          departureTime: parsedDepartureTime,
+          from,
+          to,
+          vehicleType: driver.vehicleType,
+          fee,
+          status: "pending",
+          paymentStatus: "pending",
+          bookingCode,
+        },
+      ],
+      { session },
+    );
 
-      date,
-      time,
+    // 7️⃣ Increment seatsBooked
+    trip.seatsBooked += 1;
+    await trip.save({ session });
 
-      from,
-      to,
-      vehicleType: driver.vehicleType,
-      fee,
-      status: "pending",
-      paymentStatus: "pending",
-      bookingCode,
-    });
+    await session.commitTransaction();
+    session.endSession();
 
-    await booking.save();
-
-    // 2️⃣ Initialize Paystack
+    // 8️⃣ Initialize Paystack (outside transaction)
     const paystackRes = await axios.post(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -90,16 +128,18 @@ export const createBooking = async (
           Authorization: `Bearer ${process.env.PAYSTACK_API_TEST_KEY}`,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
-    // 3️⃣ Return payment URL
     return res.status(201).json({
       success: true,
+      bookingId: booking[0]._id,
+      tripId: trip._id,
       authorizationUrl: paystackRes.data.data.authorization_url,
     });
   } catch (err) {
-    console.log(err);
+    await session.abortTransaction();
+    session.endSession();
     next(err);
   }
 };
@@ -107,7 +147,7 @@ export const createBooking = async (
 export const verifyPayment = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { reference } = req.query;
@@ -123,7 +163,7 @@ export const verifyPayment = async (
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_API_TEST_KEY}`,
         },
-      }
+      },
     );
 
     const paymentData = verifyRes.data?.data;
@@ -168,7 +208,7 @@ export const verifyPayment = async (
 export const getBookingById = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { id } = req.params;
@@ -224,7 +264,7 @@ export const getBookingById = async (
 export const getBookingByCode = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { bookingCode } = req.params;
@@ -280,7 +320,7 @@ export const getBookingByCode = async (
 export const getBookingsByUser = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const userId = req.user?.id;

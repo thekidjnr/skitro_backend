@@ -1,25 +1,24 @@
-import mongoose, { Schema, Document, model } from "mongoose";
+import mongoose, { Schema, Document, model, Types } from "mongoose";
 
 export interface IBooking extends Document {
-  userId: mongoose.Types.ObjectId;
+  userId: Types.ObjectId;
 
-  driverId: mongoose.Types.ObjectId;
-  routeTemplateId: mongoose.Types.ObjectId;
+  driverId: Types.ObjectId;
+  routeTemplateId: Types.ObjectId;
 
-  date: string;
-  time: string;
+  departureTime: Date;
 
-  from: mongoose.Types.ObjectId;
+  from: Types.ObjectId;
+  to: Types.ObjectId;
 
-  to: mongoose.Types.ObjectId;
-
-  vehicleType: mongoose.Types.ObjectId;
+  vehicleType: Types.ObjectId;
 
   fee: number;
 
   status: "pending" | "booked" | "cancelled" | "completed";
   paymentStatus: "pending" | "paid" | "refunded";
 
+  tripId: Types.ObjectId;
   bookingCode: string;
   cancelledAt?: Date;
 }
@@ -40,11 +39,9 @@ const bookingSchema = new Schema<IBooking>(
       required: true,
     },
 
-    date: { type: String, required: true },
-    time: { type: String, required: true },
+    departureTime: { type: Date, required: true },
 
     from: { type: Schema.Types.ObjectId, required: true },
-
     to: { type: Schema.Types.ObjectId, required: true },
 
     vehicleType: {
@@ -72,16 +69,23 @@ const bookingSchema = new Schema<IBooking>(
       required: true,
       unique: true,
     },
+
+    tripId: {
+      type: Schema.Types.ObjectId,
+      ref: "Trip",
+      required: true,
+    },
+
     cancelledAt: { type: Date },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
+// Index for quick lookups per driver and trip
 bookingSchema.index({
   driverId: 1,
   routeTemplateId: 1,
-  date: 1,
-  time: 1,
+  departureTime: 1,
   status: 1,
 });
 

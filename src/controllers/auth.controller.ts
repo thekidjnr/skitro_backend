@@ -9,7 +9,7 @@ import axios from "axios";
 export const startOnboarding = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { role, phone } = req.body;
@@ -54,7 +54,7 @@ export const startOnboarding = async (
 export const sendOtp = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { phone } = req.body;
@@ -80,7 +80,7 @@ export const sendOtp = async (
           "X-API-Key": process.env.GATEKEEPER_API_KEY!,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     const { reference, expiresAt } = response.data;
@@ -103,7 +103,7 @@ export const sendOtp = async (
 export const verifyOtp = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { phone, otp } = req.body;
@@ -129,7 +129,7 @@ export const verifyOtp = async (
           "X-API-Key": process.env.GATEKEEPER_API_KEY!,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     if (!response.data?.verified) {
@@ -160,7 +160,7 @@ export const verifyOtp = async (
 export const completeProfile = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const { firstName, lastName, email } = req.body;
@@ -169,7 +169,7 @@ export const completeProfile = async (
     if (!userId) return next(createError(401, "Not authenticated"));
     if (!firstName || !lastName || !email) {
       return next(
-        createError(400, "firstName, lastName, and email are required")
+        createError(400, "firstName, lastName, and email are required"),
       );
     }
 

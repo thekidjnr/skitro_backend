@@ -5,6 +5,21 @@ import { RouteTemplate } from "../models/routeTemplate.model";
 import mongoose from "mongoose";
 import { User } from "../models/user.model";
 import { generateToken } from "../utils/jwt.utils";
+import { Booking } from "../models/booking.model";
+
+interface EnrichedTrip {
+  routeTemplateId: string;
+  date: string;
+  time: string;
+  passengerCount: number;
+  from: any;
+  to: any;
+  stops: any[];
+  estimatedDuration?: number;
+  pricePerKm?: number;
+  vehicleCapacity: number;
+  availableSeats: number;
+}
 
 export const onboardDriver = async (
   req: Request,
@@ -477,6 +492,226 @@ export const deleteDriverRoute = async (
       message: "Route deleted successfully",
     });
   } catch (err) {
+    next(err);
+  }
+};
+
+export const getDriverTrips = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { driverId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(driverId)) {
+      return next(createError(400, "Invalid driver ID"));
+    }
+
+    const driver = await Driver.findById(driverId).select("vehicleCapacity");
+    if (!driver) return next(createError(404, "Driver not found"));
+
+    const trips = await Booking.aggregate([
+      {
+        $match: {
+          driverId: new mongoose.Types.ObjectId(driverId),
+          status: { $in: ["booked", "completed"] },
+        },
+      },
+
+      // Group bookings into trips
+      {
+        $group: {
+          _id: {
+            routeTemplateId: "$routeTemplateId",
+            date: "$date",
+            time: "$time",
+          },
+          passengerCount: { $sum: 1 },
+          totalEarnings: { $sum: "$fee" }, // ✅ IMPORTANT
+        },
+      },
+
+      // Attach route info
+      {
+        $lookup: {
+          from: "routetemplates",
+          localField: "_id.routeTemplateId",
+          foreignField: "_id",
+          as: "route",
+        },
+      },
+      { $unwind: "$route" },
+
+      // Shape response
+      {
+        $project: {
+          routeTemplateId: "$_id.routeTemplateId",
+          date: "$_id.date",
+          time: "$_id.time",
+          passengerCount: 1,
+          totalEarnings: 1,
+          distance: {
+            $ifNull: ["$route.totalDistance", 0],
+          },
+          from: "$route.from",
+          to: "$route.to",
+          stops: "$route.stops",
+          route: 1,
+        },
+      },
+
+      { $sort: { date: 1, time: 1 } },
+    ]);
+
+    // Add capacity & available seats
+
+    const enrichedTrips = trips.map((trip) => ({
+      ...trip,
+      vehicleCapacity: driver.vehicleCapacity,
+      availableSeats: driver.vehicleCapacity - trip.passengerCount,
+    }));
+
+    // Split upcoming & past
+    const upcomingTrips: EnrichedTrip[] = [];
+    const pastTrips: EnrichedTrip[] = [];
+
+    enrichedTrips.forEach((t) => {
+      const tripDateTime = new Date(
+        `${t.date.substring(0, 10)}T${t.time.substring(11, 19)}`
+      );
+      if (tripDateTime > new Date()) upcomingTrips.push(t);
+      else pastTrips.push(t);
+    });
+
+    return res.json({
+      success: true,
+      totalTrips: enrichedTrips.length,
+      upcomingTrips,
+      pastTrips,
+    });
+  } catch (err) {
+    console.error(err);
+    next(createError(500, "Failed to fetch driver trips"));
+  }
+};
+
+export const getTripPassengers = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { driverId } = req.params;
+    const { routeTemplateId, date, time } = req.query;
+
+    if (!driverId || !routeTemplateId || !date || !time) {
+      return next(
+        createError(
+          400,
+          "driverId, routeTemplateId, date, and time are required"
+        )
+      );
+    }
+
+    // Fetch passengers
+    const passengers = await Booking.find({
+      driverId,
+      routeTemplateId,
+      date,
+      time,
+      status: { $in: ["booked", "completed"] },
+    }).populate("userId", "firstName lastName phone email");
+
+    // Fetch route template details
+    const routeTemplate = await RouteTemplate.findById(routeTemplateId)
+      .populate("from to stops")
+      .lean();
+
+    if (!routeTemplate) {
+      return next(createError(404, "RouteTemplate not found"));
+    }
+
+    // Calculate estimated earnings
+    const estimatedEarnings = passengers.reduce((sum, b) => sum + b.fee, 0);
+    const totalDistance = routeTemplate.stopDistances?.reduce(
+      (sum, dist) => sum + dist,
+      0
+    );
+
+    return res.json({
+      success: true,
+      count: passengers.length,
+      passengers,
+      trip: {
+        routeTemplateId: routeTemplate._id,
+        from: routeTemplate.from,
+        to: routeTemplate.to,
+        stops: routeTemplate.stops,
+        distance: totalDistance || null,
+        estimatedEarnings,
+        date,
+        time,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getDriverEarnings = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { driverId } = req.params;
+    const { month } = req.query;
+
+    if (!driverId) {
+      return res.status(400).json({ message: "DriverId is required" });
+    }
+
+    const driverObjectId = new mongoose.Types.ObjectId(driverId);
+
+    let dateFilter = {};
+    if (month && typeof month === "string") {
+      const [year, mon] = month.split("-").map(Number);
+      const startDate = new Date(year, mon - 1, 1);
+      const endDate = new Date(year, mon, 1); // first day of next month
+      dateFilter = { createdAt: { $gte: startDate, $lt: endDate } };
+    }
+
+    // Aggregate total earnings
+    const earningsAggregation = await Booking.aggregate([
+      {
+        $match: {
+          driverId: driverObjectId,
+          paymentStatus: "paid",
+          ...dateFilter,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalEarnings: { $sum: "$fee" },
+          totalTrips: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const earnings = earningsAggregation[0] || {
+      totalEarnings: 0,
+      totalTrips: 0,
+    };
+
+    return res.json({
+      success: true,
+      totalEarnings: earnings.totalEarnings,
+      totalTrips: earnings.totalTrips,
+    });
+  } catch (err) {
+    console.error(err);
     next(err);
   }
 };

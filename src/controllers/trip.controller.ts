@@ -1,140 +1,184 @@
-// import { Request, Response, NextFunction } from "express";
-// import Trip from "../models/trip.model";
-// import { createError } from "../utils/error.utils";
-// import cron from "node-cron";
-// import { Driver } from "../models/driver.model";
-// import { startOfDay } from "date-fns";
-// import { RouteTemplate } from "../models/routeTemplate.model";
+import { NextFunction, Request, Response } from "express";
+import mongoose from "mongoose";
+import { createError } from "../utils/error.utils";
+import { Trip } from "../models/trip.model";
+import { Booking } from "../models/booking.model";
 
-// export const searchTrips = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ) => {
-//   try {
-//     const { routeTemplateId, date } = req.query;
+// ─────────────────────────────
+// Get single trip by ID
+// ─────────────────────────────
+export const getTripById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { tripId } = req.params;
 
-//     if (!routeTemplateId) {
-//       return next(createError(400, "routeTemplateId is required"));
-//     }
+    if (!mongoose.Types.ObjectId.isValid(tripId)) {
+      return next(createError(400, "Invalid trip ID"));
+    }
 
-//     const trips = await Trip.find({
-//       routeTemplateId,
-//       ...(date ? { date } : {}),
-//       availableSeats: { $gt: 0 },
-//     }).populate("driverId");
+    const trip = await Trip.findById(tripId)
+      .populate("driverId", "vehicleRegNumber vehicleType")
+      .populate("routeTemplateId");
 
-//     return res.json({
-//       success: true,
-//       trips,
-//     });
-//   } catch (err) {
-//     next(err);
-//   }
-// };
+    if (!trip) return next(createError(404, "Trip not found"));
 
-// export function startTripGenerationCron() {
-//   cron.schedule("5 0 * * *", async () => {
-//     console.log("🚍 Trip Generation Cron Started...");
+    return res.status(200).json({
+      success: true,
+      trip,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
-//     try {
-//       const drivers = await Driver.find({ isOnline: true });
+// ─────────────────────────────
+// Get all trips for a driver on a given date
+// ─────────────────────────────
+export const getTripsForDriver = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { driverId } = req.params;
+    const { date } = req.query;
 
-//       for (const driver of drivers) {
-//         for (const route of driver.routes) {
-//           if (!route.active) continue;
+    if (!date || typeof date !== "string") {
+      return next(createError(400, "Date is required"));
+    }
 
-//           const today = startOfDay(new Date());
+    // Convert date to start & end of day for departureTime query
+    const startOfDay = new Date(`${date}T00:00:00.000Z`);
+    const endOfDay = new Date(`${date}T23:59:59.999Z`);
 
-//           const existingTrip = await Trip.findOne({
-//             driverId: driver._id,
-//             routeTemplateId: route.routeTemplateId,
-//             date: today,
-//           });
+    const trips = await Trip.find({
+      driverId: new mongoose.Types.ObjectId(driverId),
+      departureTime: { $gte: startOfDay, $lte: endOfDay },
+      status: { $ne: "cancelled" },
+    }).sort({ departureTime: 1 });
 
-//           if (existingTrip) {
-//             console.log(
-//               `⏭ Trip already exists for driver ${driver._id} on ${today}`
-//             );
-//             continue;
-//           }
+    return res.status(200).json({
+      success: true,
+      count: trips.length,
+      trips,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
-//           // Generate one trip per enabled time slot
-//           for (const t of route.times) {
-//             if (!t.enabled) continue;
+// ─────────────────────────────
+// Mark trip as departed
+// ─────────────────────────────
+export const markTripDeparted = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { tripId } = req.params;
 
-//             const trip = new Trip([
-//               {
-//                 driverId: driver._id,
-//                 routeTemplateId: route.routeTemplateId,
-//                 from: route.from,
-//                 to: route.to,
-//                 stops: route.selectedStops,
-//                 time: t.time,
-//                 date: today,
-//                 totalSeats: driver.vehicleCapacity,
-//                 availableSeats: driver.seatsAvailable ?? driver.vehicleCapacity,
-//                 price: 0,
-//                 status: "scheduled",
-//               },
-//             ]);
+    const trip = await Trip.findById(tripId);
+    if (!trip) return next(createError(404, "Trip not found"));
 
-//             await trip.save();
+    if (trip.status !== "scheduled") {
+      return next(
+        createError(400, "Only scheduled trips can be marked as departed"),
+      );
+    }
 
-//             console.log(
-//               `✅ Trip created for driver ${driver._id} at ${t.time} for ${today}`
-//             );
-//           }
-//         }
-//       }
+    trip.status = "departed";
+    await trip.save();
 
-//       console.log("🎉 Trip generation completed.");
-//     } catch (err) {
-//       console.error("❌ Error in Trip Generation Cron:", err);
-//     }
-//   });
-// }
+    return res.status(200).json({
+      success: true,
+      message: "Trip marked as departed",
+      trip,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
-// export const createTripManually = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction
-// ) => {
-//   try {
-//     const { driverId, routeTemplateId, date, time, price } = req.body;
+// ─────────────────────────────
+// Complete trip
+// ─────────────────────────────
+export const completeTrip = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { tripId } = req.params;
 
-//     if (!driverId || !routeTemplateId || !date || !time) {
-//       return next(createError(400, "Missing required fields"));
-//     }
+    const trip = await Trip.findById(tripId);
+    if (!trip) return next(createError(404, "Trip not found"));
 
-//     const driver = await Driver.findById(driverId);
-//     if (!driver) return next(createError(404, "Driver not found"));
+    if (trip.status !== "departed") {
+      return next(createError(400, "Only departed trips can be completed"));
+    }
 
-//     const routeTemplate = await RouteTemplate.findById(routeTemplateId);
-//     if (!routeTemplate) {
-//       return next(createError(404, "Route Template not found"));
-//     }
+    trip.status = "completed";
+    await trip.save();
 
-//     const totalSeats = driver.seatsAvailable || 0;
+    return res.status(200).json({
+      success: true,
+      message: "Trip completed successfully",
+      trip,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
-//     const trip = await Trip.create({
-//       driverId,
-//       routeTemplateId,
-//       from: routeTemplate.from.name,
-//       to: routeTemplate.to.name,
-//       stops: routeTemplate.stops.map((s) => s.name),
-//       date,
-//       time,
-//       totalSeats,
-//       availableSeats: totalSeats,
-//       price: price ?? routeTemplate.baseFare,
-//     });
+// ─────────────────────────────
+// Get all passengers (bookings) for a trip
+// ─────────────────────────────
+export const getTripBookings = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { tripId } = req.params;
 
-//     return res.json({
-//       success: true,
-//       trip,
-//     });
-//   } catch (err) {
-//     next(err);
-//   }
-// };
+    if (!mongoose.Types.ObjectId.isValid(tripId)) {
+      return next(createError(400, "Invalid trip ID"));
+    }
+
+    // Ensure trip exists
+    const trip = await Trip.findById(tripId);
+    if (!trip) return next(createError(404, "Trip not found"));
+
+    // Fetch valid passengers
+    const bookings = await Booking.find({
+      tripId: new mongoose.Types.ObjectId(tripId),
+      status: "booked",
+      paymentStatus: "paid",
+    })
+      .populate("userId", "name phone email") // adjust fields as needed
+      .sort({ createdAt: 1 });
+
+    return res.status(200).json({
+      success: true,
+      trip: {
+        id: trip._id,
+        departureTime: trip.departureTime,
+        from: trip.from,
+        to: trip.to,
+        seatsBooked: trip.seatsBooked,
+        vehicleCapacity: trip.vehicleCapacity,
+      },
+      passengers: bookings.map((b) => ({
+        bookingId: b._id,
+        bookingCode: b.bookingCode,
+        user: b.userId,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+};

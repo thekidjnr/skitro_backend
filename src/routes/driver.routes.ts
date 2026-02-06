@@ -4,6 +4,9 @@ import {
   deleteDriverRoute,
   getDriver,
   getDriverById,
+  getDriverEarnings,
+  getDriverTrips,
+  getTripPassengers,
   onboardDriver,
   searchDriversByRoute,
   toggleDriverStatus,
@@ -19,6 +22,9 @@ router.post("/:id/route", addDriverRoute);
 router.get("/search-by-route", searchDriversByRoute);
 router.get("/me", protect, getDriver);
 router.get("/:id", protect, getDriverById);
+router.get("/:driverId/trips", getDriverTrips);
+router.get("/:driverId/trips/passengers", getTripPassengers);
+router.get("/:driverId/earnings", getDriverEarnings);
 
 router.patch("/:id/status", protect, toggleDriverStatus);
 router.patch("/:id/location", updateDriverLocation);

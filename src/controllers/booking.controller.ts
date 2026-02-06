@@ -13,7 +13,7 @@ export const createBooking = async (
   next: NextFunction,
 ) => {
   const session = await mongoose.startSession();
-  console.log(req.body);
+
   try {
     const {
       userId,
@@ -42,7 +42,6 @@ export const createBooking = async (
 
     // 2️⃣ Parse & validate departureTime
     const parsedDepartureTime = new Date(departureTime);
-
     if (isNaN(parsedDepartureTime.getTime())) {
       return next(createError(400, "Invalid departureTime"));
     }
@@ -78,13 +77,13 @@ export const createBooking = async (
       throw new Error("Failed to create or fetch trip");
     }
 
-    // 5️⃣ Check seat availability
+    // 5️⃣ Guard against already-full trips
     if (trip.seatsBooked >= trip.vehicleCapacity) {
       await session.abortTransaction();
       return next(createError(400, "No seats available"));
     }
 
-    // 6️⃣ Create booking
+    // 6️⃣ Create booking (NO seat confirmation yet)
     const bookingCode = `SK-${Date.now()}-${crypto.randomInt(1000, 9999)}`;
 
     const booking = await Booking.create(
@@ -107,14 +106,10 @@ export const createBooking = async (
       { session },
     );
 
-    // 7️⃣ Increment seatsBooked
-    trip.seatsBooked += 1;
-    await trip.save({ session });
-
     await session.commitTransaction();
     session.endSession();
 
-    // 8️⃣ Initialize Paystack (outside transaction)
+    // 7️⃣ Initialize Paystack (outside transaction)
     const paystackRes = await axios.post(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -149,6 +144,8 @@ export const verifyPayment = async (
   res: Response,
   next: NextFunction,
 ) => {
+  const session = await mongoose.startSession();
+
   try {
     const { reference } = req.query;
 
@@ -172,15 +169,21 @@ export const verifyPayment = async (
       return next(createError(400, "Payment not successful"));
     }
 
-    // 2️⃣ Find booking by bookingCode (same as reference)
-    const booking = await Booking.findOne({ bookingCode: reference });
+    session.startTransaction();
+
+    // 2️⃣ Fetch booking inside transaction
+    const booking = await Booking.findOne({ bookingCode: reference }).session(
+      session,
+    );
 
     if (!booking) {
+      await session.abortTransaction();
       return next(createError(404, "Booking not found"));
     }
 
     // 3️⃣ Prevent double processing
     if (booking.paymentStatus === "paid") {
+      await session.commitTransaction();
       return res.status(200).json({
         success: true,
         message: "Payment already verified",
@@ -188,18 +191,38 @@ export const verifyPayment = async (
       });
     }
 
-    // 4️⃣ Mark booking as PAID + BOOKED
+    // 4️⃣ Fetch trip
+    const trip = await Trip.findById(booking.tripId).session(session);
+    if (!trip) {
+      await session.abortTransaction();
+      return next(createError(404, "Trip not found"));
+    }
+
+    // 5️⃣ Final seat check (VERY IMPORTANT)
+    if (trip.seatsBooked >= trip.vehicleCapacity) {
+      await session.abortTransaction();
+      return next(createError(409, "Trip is full. Payment will be refunded."));
+    }
+
+    // 6️⃣ Confirm seat + booking
+    trip.seatsBooked += 1;
     booking.paymentStatus = "paid";
     booking.status = "booked";
 
-    await booking.save();
+    await trip.save({ session });
+    await booking.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
 
     return res.status(200).json({
       success: true,
-      message: "Payment verified successfully",
+      message: "Payment verified and seat confirmed",
       booking,
     });
   } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
     console.error(err);
     next(createError(500, "Payment verification failed"));
   }
